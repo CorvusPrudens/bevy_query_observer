@@ -30,6 +30,10 @@ mod test {
     #[derive(Component)]
     struct TestMarker;
 
+    #[derive(Component, Eq, PartialEq, Hash, Copy, Clone)]
+    #[component(immutable)]
+    struct Value(usize);
+
     #[derive(Resource, Default)]
     struct TestResource(usize);
 
@@ -135,10 +139,6 @@ mod test {
 
     #[test]
     fn test_invariants() {
-        #[derive(Component, Eq, PartialEq, Hash, Copy, Clone)]
-        #[component(immutable)]
-        struct Value(usize);
-
         #[derive(Component)]
         struct ExcludeFromIndex;
 
@@ -195,5 +195,32 @@ mod test {
         world.entity_mut(test_entity).remove::<Value>();
         let index = world.resource::<Index>();
         assert!(!index.0.get(&Value(69)).unwrap().contains(&test_entity));
+    }
+
+    #[test]
+    fn test_duplicate_filtering() {
+        let mut app = App::new();
+        app.init_resource::<TestResource>();
+
+        fn add_and_insert(_: Start<&Value, With<TestMarker>>, mut res: ResMut<TestResource>) {
+            res.0 += 1;
+        }
+
+        fn remove_and_replace(_: Stop<&Value, With<TestMarker>>, mut res: ResMut<TestResource>) {
+            res.0 -= 1;
+        }
+
+        app.add_start_observer(add_and_insert);
+        app.add_stop_observer(remove_and_replace);
+
+        let world = app.world_mut();
+        let test_entity = world.spawn((Value(42), TestMarker)).id();
+
+        // without filtering, this would trigger twice
+        assert_eq!(world.resource::<TestResource>().0, 1);
+
+        world.despawn(test_entity);
+
+        assert_eq!(world.resource::<TestResource>().0, 0);
     }
 }

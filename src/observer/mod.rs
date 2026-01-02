@@ -27,7 +27,6 @@ fn query_observer_runner(
     trigger: PtrMut,
 ) {
     let world = world.as_unsafe_world_cell();
-
     let observer_cell = world.get_entity(observer).unwrap();
 
     // # Safety
@@ -35,7 +34,7 @@ fn query_observer_runner(
     // In both cases, this cannot be mutably aliased.
     let observer = unsafe { observer_cell.get::<QueryObserverOf>().unwrap().0 };
 
-    let kind = {
+    let access = {
         let mut observer_state = unsafe {
             observer_cell
                 .get_mut::<QueryObserverObserverState>()
@@ -76,7 +75,10 @@ fn query_observer_runner(
             //
             // According to the event key, this must be an `Add` event.
             let event: &mut Add = unsafe { event.deref_mut() };
-            (event.entity, matches!(kind.add, LifecycleAccess::Deferred))
+            (
+                event.entity,
+                matches!(access.add, LifecycleAccess::Deferred),
+            )
         }
         INSERT => {
             // # Safety
@@ -85,7 +87,7 @@ fn query_observer_runner(
             let event: &mut Insert = unsafe { event.deref_mut() };
             (
                 event.entity,
-                matches!(kind.insert, LifecycleAccess::Deferred),
+                matches!(access.insert, LifecycleAccess::Deferred),
             )
         }
         REPLACE => {
@@ -95,7 +97,7 @@ fn query_observer_runner(
             let event: &mut Replace = unsafe { event.deref_mut() };
             (
                 event.entity,
-                matches!(kind.replace, LifecycleAccess::Deferred),
+                matches!(access.replace, LifecycleAccess::Deferred),
             )
         }
         REMOVE => {
@@ -105,7 +107,7 @@ fn query_observer_runner(
             let event: &mut Remove = unsafe { event.deref_mut() };
             (
                 event.entity,
-                matches!(kind.remove, LifecycleAccess::Deferred),
+                matches!(access.remove, LifecycleAccess::Deferred),
             )
         }
         _ => panic!("triggered query observer with unexpected event key"),
@@ -118,6 +120,39 @@ fn query_observer_runner(
         query_state.kind,
         &trigger.components,
     );
+
+    if should_run {
+        let last_key = query_state.last_key;
+        query_state.last_key = Some(trigger_context.event_key);
+
+        let last_trigger = world.last_trigger_id();
+        let is_adjacent_tick = query_state.last_trigger_id + 1 == last_trigger;
+        query_state.last_trigger_id = last_trigger;
+
+        // A query observer with either add and insert or remove and replace
+        // observers could erroneously trigger twice for the same "moment"
+        // without this check.
+        //
+        // Since both add and insert and replace and remove are necessarily
+        // adjacent, this cannot accidentally filter out legitimate events.
+        if is_adjacent_tick {
+            match last_key {
+                Some(ADD)
+                    if query_state.is_add_and_insert && trigger_context.event_key == INSERT =>
+                {
+                    // skip evaluation
+                    return;
+                }
+                Some(REPLACE)
+                    if query_state.is_remove_and_replace && trigger_context.event_key == REMOVE =>
+                {
+                    // also skip
+                    return;
+                }
+                _ => {}
+            }
+        }
+    }
 
     if should_run {
         if !deferred {
@@ -172,6 +207,10 @@ struct QueryObserverState {
     evaluator: Evaluator,
     kind: QueryObserverKind,
     system: BoxedSystem<In<Entity>, ()>,
+    last_key: Option<EventKey>,
+    last_trigger_id: u32,
+    is_add_and_insert: bool,
+    is_remove_and_replace: bool,
 }
 
 #[derive(Component)]
@@ -299,15 +338,18 @@ impl QueryObserver {
 
         system.initialize(world);
 
+        let access = get_access(world, kind);
         let state = QueryObserverState {
             evaluator,
             system,
             kind,
+            last_key: None,
+            last_trigger_id: 0,
+            is_add_and_insert: access.is_add_and_insert(),
+            is_remove_and_replace: access.is_remove_and_replace(),
         };
 
         world.entity_mut(state_entity).insert(state);
-
-        let access = get_access(world, kind);
 
         let mut observer_sets = HashMap::<_, Vec<ComponentId>>::default();
         for component in access.set {
@@ -730,6 +772,42 @@ struct ComponentAccess {
 #[derive(Default)]
 pub struct Access {
     set: Vec<ComponentAccess>,
+}
+
+impl Access {
+    fn is_add_and_insert(&self) -> bool {
+        let mut add = false;
+        let mut insert = false;
+
+        for access in self.set.iter() {
+            if !matches!(access.access.add, LifecycleAccess::None) {
+                add = true;
+            }
+
+            if !matches!(access.access.insert, LifecycleAccess::None) {
+                insert = true;
+            }
+        }
+
+        add && insert
+    }
+
+    fn is_remove_and_replace(&self) -> bool {
+        let mut remove = false;
+        let mut replace = false;
+
+        for access in self.set.iter() {
+            if !matches!(access.access.remove, LifecycleAccess::None) {
+                remove = true;
+            }
+
+            if !matches!(access.access.replace, LifecycleAccess::None) {
+                replace = true;
+            }
+        }
+
+        remove && replace
+    }
 }
 
 impl Access {
