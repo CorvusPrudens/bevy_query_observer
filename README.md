@@ -127,6 +127,11 @@ yet expressive enough, the crate comes with a few limitations.
    In principle, first party query observers could reduce unnecessary evaluations
    using archetype information.
 
+4. Performance isn't great
+
+   The overhead of evaluating a query observer is around three times slower than
+   a normal observer. Spawning query observers is nearly an order of magnitude slower.
+
 ## Bevy version compatibility
 
 | `bevy` | `bevy_query_observer` |

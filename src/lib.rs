@@ -147,6 +147,11 @@
 //!    In principle, first party query observers could reduce unnecessary evaluations
 //!    using archetype information.
 //!
+//! 4. Performance isn't great
+//!
+//!    The overhead of evaluating a query observer is around three times slower than
+//!    a normal observer. Spawning query observers is nearly an order of magnitude slower.
+//!
 //! [`Disabled`]: bevy_ecs::prelude::Disabled
 //! [`QueryObserverAccess`]: observer::QueryObserverAccess
 //! [`QueryData`]: bevy_ecs::prelude::QueryData

@@ -340,7 +340,7 @@ where
 
         if !set.get_conflicts_single(component_access).is_empty() {
             panic!(
-                "`DataAdded` access conflicts with one or more system parameters in `{}`",
+                "`Start` access conflicts with one or more system parameters in `{}`",
                 self.system.name()
             );
         }

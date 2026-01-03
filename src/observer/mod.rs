@@ -394,8 +394,6 @@ impl QueryObserver {
             is_remove_and_replace: access.is_remove_and_replace(),
         };
 
-        world.entity_mut(state_entity).insert(state);
-
         let mut observer_sets = HashMap::<_, Vec<ComponentId>>::default();
         for component in access.set {
             let set = observer_sets.entry(component.access).or_default();
@@ -404,7 +402,7 @@ impl QueryObserver {
             }
         }
 
-        for (access, ids) in observer_sets.into_iter() {
+        let observers = observer_sets.into_iter().map(move |(access, ids)| {
             let mut observer = Observer::with_dynamic_runner(query_observer_runner);
             if let Some(entities) = &entities {
                 observer.watch_entities(entities.iter().copied());
@@ -421,15 +419,18 @@ impl QueryObserver {
                 observer = observer.with_component(component);
             }
 
-            world.spawn((
-                QueryObserverOf(state_entity),
+            (
                 QueryObserverObserverState {
                     access,
                     last_trigger_id: 0,
                 },
                 observer,
-            ));
-        }
+            )
+        });
+
+        world
+            .entity_mut(state_entity)
+            .insert((state, QueryObservers::spawn(SpawnIter(observers))));
     }
 }
 
