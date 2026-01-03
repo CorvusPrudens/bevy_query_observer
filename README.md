@@ -117,7 +117,12 @@ yet expressive enough, the crate comes with a few limitations.
    on `QueryObserverAccess`, meaning any custom query data or filters require
    an implementation.
 
-3. Query observers frequently early return
+3. Performance isn't great
+
+   The overhead of evaluating a query observer is around three times greater than
+   a normal observer. Spawning query observers is nearly an order of magnitude slower.
+
+4. Query observers frequently early return
 
    Since each unique component in `Start` and `Stop` needs a dedicated observer,
    lifecycle events will frequently trigger query observer evaluations that do nothing.
@@ -126,11 +131,6 @@ yet expressive enough, the crate comes with a few limitations.
 
    In principle, first party query observers could reduce unnecessary evaluations
    using archetype information.
-
-4. Performance isn't great
-
-   The overhead of evaluating a query observer is around three times slower than
-   a normal observer. Spawning query observers is nearly an order of magnitude slower.
 
 ## Bevy version compatibility
 
