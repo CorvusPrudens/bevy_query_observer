@@ -153,7 +153,7 @@ pub trait AddStopObserver {
     /// # use bevy::prelude::*;
     /// # use bevy_query_observer::*;
     /// fn plugin(app: &mut App) {
-    ///     app.add_start_observer(named_entity);
+    ///     app.add_stop_observer(named_entity);
     /// }
     ///
     /// fn named_entity(data: Stop<(Entity, &Name)>) {
