@@ -1,7 +1,7 @@
 //! [![crates.io](https://img.shields.io/crates/v/bevy_query_observer)](https://crates.io/crates/bevy_query_observer)
 //! [![docs.rs](https://docs.rs/bevy_query_observer/badge.svg)](https://docs.rs/bevy_query_observer)
 //!
-//! `bevy_query_observer` provides observers that triggers
+//! `bevy_query_observer` provides observers that trigger
 //! when an entity starts or stops matching a query. Query
 //! observers also trigger when a matching entity's data
 //! changes according to lifecycle events.
