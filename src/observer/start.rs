@@ -1,7 +1,5 @@
-use crate::{
-    QueryObserver,
-    observer::{DefaultFilterBanisher, QueryObserverAccess, SpawnQueryObserver},
-};
+//! Implementations for [`Start`] query observers.
+
 use alloc::{boxed::Box, vec::Vec};
 use bevy_ecs::{
     archetype::Archetype,
@@ -13,6 +11,37 @@ use bevy_ecs::{
 use bevy_utils::prelude::DebugName;
 use core::marker::PhantomData;
 
+use crate::{
+    QueryObserver,
+    observer::{DefaultFilterBanisher, Infallible, QueryObserverAccess, SpawnQueryObserver},
+};
+
+/// A [`SystemInput`] used by a query observer.
+///
+/// [`Start`] triggers when an entity starts matching an archetypal query.
+/// It contains the query's data, fetched from the triggering entity.
+///
+/// If you need access to the entity that triggered a query observer,
+/// you can add [`Entity`] to the query as with a normal [`Query`].
+///
+/// ```
+/// # use bevy::prelude::*;
+/// # use bevy_query_observer::*;
+/// fn named_entity(data: Start<(Entity, &Name)>) {
+///     let (entity, name) = data.into_inner();
+///     info!("entity {entity:?} is named {name}");
+/// }
+/// ```
+///
+/// Because query observers are implemented in terms of component lifecycle
+/// events, any query filters must be archetypal. Filters like [`Changed`] or
+/// [`Added`] are not supported.
+///
+/// Note that the filter will not necessarily be used when fetching an entity.
+/// Some filters, like `Without<C>`, necessitate running a query observer even
+/// when the target entity has `C`. Consequently, a query observer system may
+/// appear to be more restrictive than necessary, and some invariants may not
+/// hold depending on the query terms.
 pub struct Start<'w, 's, D: QueryData, F: QueryFilter = ()> {
     data: D::Item<'w, 's>,
     filter: PhantomData<fn() -> F>,
@@ -31,6 +60,16 @@ impl<D: QueryData, F: QueryFilter> SystemInput for Start<'_, '_, D, F> {
 }
 
 impl<'w, 's, D: QueryData, F: QueryFilter> Start<'w, 's, D, F> {
+    /// Consume the [`Start`], returning the query data.
+    ///
+    /// ```
+    /// # use bevy::prelude::*;
+    /// # use bevy_query_observer::*;
+    /// fn named_entity(data: Start<(Entity, &Name)>) {
+    ///     let (entity, name) = data.into_inner();
+    ///     info!("entity {entity:?} is named {name}");
+    /// }
+    /// ```
     pub fn into_inner(self) -> D::Item<'w, 's> {
         self.data
     }
@@ -50,6 +89,18 @@ impl<'w, 's, D: QueryData, F: QueryFilter> core::ops::DerefMut for Start<'w, 's,
     }
 }
 
+impl<'w, 's, D: QueryData, F: QueryFilter> core::fmt::Debug for Start<'w, 's, D, F>
+where
+    D::Item<'w, 's>: core::fmt::Debug,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Start")
+            .field("data", &self.data)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Implemented for [`System`]s with [`Start`] as the first argument.
 pub trait StartSystem<
     D: QueryData + QueryObserverAccess,
     F: QueryFilter + QueryObserverAccess,
@@ -65,6 +116,7 @@ where
 {
 }
 
+/// Implemented for systems that convert into [`StartSystem`].
 pub trait IntoStartSystem<
     D: QueryData + QueryObserverAccess,
     F: QueryFilter + QueryObserverAccess,
@@ -72,12 +124,12 @@ pub trait IntoStartSystem<
     Out = (),
 >: Send + 'static
 {
+    /// The type of [`System`] that this type converts into.
     type System: StartSystem<D, F, Out>;
 
+    /// Consumes this value and converts it into its corresponding [`System`].
     fn into_system(this: Self) -> Self::System;
 }
-
-pub struct Infallible;
 
 impl<D, F, M, S, Out> IntoStartSystem<D, F, (Infallible, M), Out> for S
 where
@@ -93,7 +145,26 @@ where
     }
 }
 
+/// A convenience trait for adding [`Start`] query observers.
 pub trait AddStartObserver {
+    /// Add a global [`Start`] query observer.
+    ///
+    /// ```
+    /// # use bevy::prelude::*;
+    /// # use bevy_query_observer::*;
+    /// fn plugin(app: &mut App) {
+    ///     app.add_start_observer(named_entity);
+    /// }
+    ///
+    /// fn named_entity(data: Start<(Entity, &Name)>) {
+    ///     let (entity, name) = data.into_inner();
+    ///     info!("entity {entity:?} is named {name}");
+    /// }
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if the given system is exclusive.
     fn add_start_observer<S, D, F, M>(&mut self, system: S) -> &mut Self
     where
         S: IntoStartSystem<D, F, M, ()>,
@@ -115,6 +186,30 @@ impl AddStartObserver for bevy_app::App {
 }
 
 impl super::QueryObserver {
+    /// Construct a [`QueryObserver`] that triggers when an entity
+    /// starts matching the query. The first argument of the system
+    /// must be [`Start`].
+    ///
+    /// ```
+    /// # use bevy::prelude::*;
+    /// # use bevy_query_observer::*;
+    /// # fn target_entity(mut commands: Commands) {
+    /// fn named_child(data: Start<(&Name, &ChildOf)>) {
+    ///     let (name, parent) = data.into_inner();
+    ///     info!("{name} is a child of {parent:?}");
+    /// }
+    ///
+    /// let query_observer = QueryObserver::start(named_child);
+    /// commands.spawn_query_observer(query_observer);
+    /// # }
+    /// ```
+    ///
+    /// Unless specific targets are added, this observer responds to
+    /// all entities.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the given system is exclusive.
     pub fn start<S, D, F, M>(observer: S) -> Self
     where
         S: IntoStartSystem<D, F, M, ()>,
@@ -162,7 +257,7 @@ impl super::QueryObserver {
     }
 }
 
-pub struct InfallibleStartSystem<S, D, F>
+struct InfallibleStartSystem<S, D, F>
 where
     D: QueryData + QueryObserverAccess + 'static,
     F: QueryFilter + QueryObserverAccess + 'static,

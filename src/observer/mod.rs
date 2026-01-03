@@ -1,3 +1,9 @@
+//! Query observers that match when an entity starts and stops
+//! matching a query.
+//!
+//! For more information,
+//! [refer to the crate documentation](crate).
+
 use alloc::vec::Vec;
 use bevy_ecs::{
     archetype::Archetype,
@@ -15,6 +21,7 @@ use bevy_ecs::{
     world::{DeferredWorld, unsafe_world_cell::UnsafeWorldCell},
 };
 use bevy_platform::collections::HashMap;
+use bevy_utils::prelude::DebugName;
 
 pub mod start;
 pub mod stop;
@@ -213,15 +220,20 @@ struct QueryObserverState {
     is_remove_and_replace: bool,
 }
 
-#[derive(Component)]
+/// A relationship linking an [`Observer`] of a specific query term
+/// to the main [`QueryObserer`] entity.
+#[derive(Component, Debug)]
 #[relationship(relationship_target = QueryObservers)]
 pub struct QueryObserverOf(pub Entity);
 
-#[derive(Component)]
+/// The set of all observers for each term in a query observer.
+#[derive(Component, Debug)]
 #[relationship_target(relationship = QueryObserverOf, linked_spawn)]
 pub struct QueryObservers(Vec<Entity>);
 
+/// A convenience trait for dynamically spawning a [`QueryObserver`].
 pub trait SpawnQueryObserver {
+    /// Spawns a new [`QueryObserver`], returning its [`Entity`].
     fn spawn_query_observer(&mut self, observer: QueryObserver) -> Entity;
 }
 
@@ -241,7 +253,9 @@ impl SpawnQueryObserver for Commands<'_, '_> {
     }
 }
 
+/// A convenience trait for dynamically inserting a [`QueryObserver`].
 pub trait InsertQueryObserver {
+    /// Insert a [`QueryObserver`] into the entity.
     fn insert_query_observer(&mut self, observer: QueryObserver) -> &mut Self;
 }
 
@@ -254,7 +268,16 @@ impl InsertQueryObserver for EntityCommands<'_> {
     }
 }
 
+/// An extension trait for manually triggering a [`QueryObserver`].
+///
+/// This can be used to build a simple reactivity framework in terms
+/// of Bevy's lifecycle events. Triggering a query observer manually
+/// allows it to respond to specific entities even if its lifecycle events
+/// occurred before the observer was spawned.
 pub trait TriggerQueryObserver {
+    /// Trigger a [`QueryObserver`] (`observer`) with a given `target`.
+    ///
+    /// If the target doesn't fulfill the query, the system will not run.
     fn trigger_query_observer(&mut self, observer: Entity, target: Entity) -> &mut Self;
 }
 
@@ -294,6 +317,10 @@ impl TriggerQueryObserver for World {
     }
 }
 
+/// An observer that triggers
+/// when an entity starts or stops matching a query.
+/// [`QueryObserver`] also triggers when a matching entity's data
+/// changes according to lifecycle events.
 pub struct QueryObserver {
     system: BoxedSystem<In<Entity>, ()>,
     entities: Option<Vec<Entity>>,
@@ -303,15 +330,18 @@ pub struct QueryObserver {
 }
 
 impl QueryObserver {
+    /// Observes the given [`Entity`] (in addition to any entity already being observed).
     pub fn watch_entity(&mut self, entity: Entity) {
         self.entities.get_or_insert_default().push(entity);
     }
 
+    /// Observes the given [`Entity`] (in addition to any entity already being observed).
     pub fn with_entity(mut self, entity: Entity) -> Self {
         self.watch_entity(entity);
         self
     }
 
+    /// Observes each [`Entity`] in the iterator (in addition to any entity already being observed).
     pub fn watch_entities<I>(&mut self, entities: I)
     where
         I: IntoIterator<Item = Entity>,
@@ -319,6 +349,7 @@ impl QueryObserver {
         self.entities.get_or_insert_default().extend(entities)
     }
 
+    /// Observes each [`Entity`] in the iterator (in addition to any entity already being observed).
     pub fn with_entities<I>(mut self, entities: I) -> Self
     where
         I: IntoIterator<Item = Entity>,
@@ -327,6 +358,20 @@ impl QueryObserver {
         self
     }
 
+    /// Returns the name of the [`QueryObserver`]'s system.
+    pub fn system_name(&self) -> DebugName {
+        self.system.name()
+    }
+
+    /// Insert a [`QueryObserver`] into the given [`Entity`].
+    ///
+    /// Unlike [`Observer`], [`QueryObserver`] is not itself a [`Component`].
+    /// This method inserts the [`QueryObserver`]'s private state into `state_entity`,
+    /// along with related entities containing custom [`Observer`]s for each unique
+    /// component in the query.
+    ///
+    /// To properly clean up a [`QueryObserver`] entity, all entities related by [`QueryObservers`]
+    /// should be despawned and the entity should be cleared.
     pub fn insert_into(self, state_entity: Entity, world: &mut World) {
         let QueryObserver {
             mut system,
@@ -388,35 +433,65 @@ impl QueryObserver {
     }
 }
 
-#[derive(PartialEq, Eq, Default, Hash, Clone, Copy)]
+impl core::fmt::Debug for QueryObserver {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("QueryObserver")
+            .field("system", &self.system)
+            .field("kind", &self.kind)
+            .field("entities", &self.entities)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Describes whether a query term requires access, and
+/// whether that access should be deferred (for example,
+/// allowing a component to be removed before evaluation).
+#[derive(PartialEq, Eq, Default, Hash, Clone, Copy, Debug)]
 pub enum LifecycleAccess {
+    /// No access required.
     #[default]
     None,
+    /// Immediate access is required.
     Immediate,
+    /// Deferred access is required, allowing
+    /// the effects of a lifecycle event (like removing a component)
+    /// to occur before running.
     Deferred,
 }
 
 impl LifecycleAccess {
-    pub fn set_immediate(&mut self) {
+    fn set_immediate(&mut self) {
         *self = Self::Immediate;
     }
 
-    pub fn set_deferred(&mut self) {
+    fn set_deferred(&mut self) {
         if !matches!(self, Self::Immediate) {
             *self = Self::Deferred;
         }
     }
 }
 
+/// Distinguishes [`Start`][start::Start] and [`Stop`][stop::Stop]
+/// query observers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QueryObserverKind {
+    /// A [`Start`][start::Start] observer.
     Start,
+    /// A [`Stop`][stop::Stop] observer.
     Stop,
 }
 
+/// Provides a simplified set of component access information
+/// for query observers.
 pub trait QueryObserverAccess {
+    /// Report a query term's component access given the [`QueryObserverKind`].
     fn report_access(world: &mut World, kind: QueryObserverKind, access: &mut Access);
 
+    /// Evaluate whether an archetype matches the query term.
+    ///
+    /// Certain queries, like `Start<(), Without<Name>>` require a method
+    /// like this in order to produce
+    /// [approximately correct behavior](crate#limitations).
     fn evaluate_archetype(
         world: UnsafeWorldCell,
         archetype: &Archetype,
@@ -738,17 +813,22 @@ macro_rules! query_observer_data {
 
 variadics_please::all_tuples!(query_observer_data, 1, 15, T);
 
-// Poor crow's access
-#[derive(PartialEq, Eq, Default, Hash, Clone, Copy)]
+/// Describes which lifecycle events, if any, a query observer
+/// term needs to respond to.
+#[derive(PartialEq, Eq, Default, Hash, Clone, Copy, Debug)]
 pub struct QueryAccess {
+    /// Access for the add lifecycle event.
     pub add: LifecycleAccess,
+    /// Access for the insert lifecycle event.
     pub insert: LifecycleAccess,
+    /// Access for the replace lifecycle event.
     pub replace: LifecycleAccess,
+    /// Access for the remove lifecycle event.
     pub remove: LifecycleAccess,
 }
 
 impl QueryAccess {
-    pub fn event_keys(&self) -> impl Iterator<Item = EventKey> {
+    fn event_keys(&self) -> impl Iterator<Item = EventKey> {
         let add = (self.add != LifecycleAccess::None).then_some(ADD);
         let insert = (self.insert != LifecycleAccess::None).then_some(INSERT);
         let replace = (self.replace != LifecycleAccess::None).then_some(REPLACE);
@@ -764,12 +844,15 @@ struct QueryObserverObserverState {
     last_trigger_id: u32,
 }
 
+#[derive(Debug)]
 struct ComponentAccess {
     id: ComponentId,
     access: QueryAccess,
 }
 
-#[derive(Default)]
+/// The full set of components a query observer needs
+/// to access.
+#[derive(Default, Debug)]
 pub struct Access {
     set: Vec<ComponentAccess>,
 }
@@ -811,6 +894,7 @@ impl Access {
 }
 
 impl Access {
+    /// Initialize or fetch an entry for `id`.
     pub fn entry(&mut self, id: ComponentId) -> &mut QueryAccess {
         let position = self.set.iter().position(|a| a.id == id).unwrap_or_else(|| {
             self.set.push(ComponentAccess {
@@ -824,7 +908,12 @@ impl Access {
         &mut self.set[position].access
     }
 
+    /// Returns `true` if the set contains the component `id`.
     pub fn contains(&self, id: ComponentId) -> bool {
         self.set.iter().any(|a| a.id == id)
     }
 }
+
+/// A marker type for infallible query observers.
+#[derive(Debug)]
+pub struct Infallible;
