@@ -13,7 +13,7 @@ use core::marker::PhantomData;
 
 use crate::{
     QueryObserver,
-    observer::{DefaultFilterBanisher, Infallible, QueryObserverAccess, SpawnQueryObserver},
+    observer::{AllowAll, Infallible, QueryObserverAccess, SpawnQueryObserver},
 };
 
 /// A [`SystemInput`] used by a query observer.
@@ -216,21 +216,19 @@ impl super::QueryObserver {
         D: QueryData + QueryObserverAccess + 'static,
         F: QueryFilter + QueryObserverAccess + 'static,
     {
-        let evaluator = |world: UnsafeWorldCell<'_>,
-                         archetype: &Archetype,
-                         kind,
-                         triggered_by: &[_]| {
-            D::evaluate_archetype(world, archetype, kind, triggered_by)
-                && F::evaluate_archetype(world, archetype, kind, triggered_by)
-                && DefaultFilterBanisher::evaluate_archetype(world, archetype, kind, triggered_by)
-        };
+        let evaluator =
+            |world: UnsafeWorldCell<'_>, archetype: &Archetype, kind, triggered_by: &[_]| {
+                D::evaluate_archetype(world, archetype, kind, triggered_by)
+                    && F::evaluate_archetype(world, archetype, kind, triggered_by)
+                    && AllowAll::evaluate_archetype(world, archetype, kind, triggered_by)
+            };
 
         let kind = super::QueryObserverKind::Stop;
         let access_getter = |world: &mut World, kind: super::QueryObserverKind| {
             let mut access = super::Access::default();
             D::report_access(world, kind, &mut access);
             F::report_access(world, kind, &mut access);
-            DefaultFilterBanisher::report_access(world, kind, &mut access);
+            AllowAll::report_access(world, kind, &mut access);
             access
         };
 
@@ -261,7 +259,7 @@ where
     D: QueryData + QueryObserverAccess + 'static,
     F: QueryFilter + QueryObserverAccess + 'static,
 {
-    input_state: Option<SystemState<Query<'static, 'static, D, DefaultFilterBanisher>>>,
+    input_state: Option<SystemState<Query<'static, 'static, D, AllowAll>>>,
     marker: PhantomData<fn() -> F>,
     system: S,
 }
@@ -289,7 +287,7 @@ where
     D: QueryData + QueryObserverAccess + 'static,
     F: QueryFilter + QueryObserverAccess + 'static,
 {
-    fn input_state(&self) -> &SystemState<Query<'static, 'static, D, DefaultFilterBanisher>> {
+    fn input_state(&self) -> &SystemState<Query<'static, 'static, D, AllowAll>> {
         self.input_state
             .as_ref()
             .expect("system must be initialized")
@@ -330,7 +328,7 @@ where
     }
 
     fn initialize(&mut self, world: &mut World) -> bevy_ecs::query::FilteredAccessSet {
-        let input_state = SystemState::<Query<D, DefaultFilterBanisher>>::new(world);
+        let input_state = SystemState::<Query<D, AllowAll>>::new(world);
 
         let param_state = input_state.param_state();
         let component_access = param_state.component_access();

@@ -617,12 +617,13 @@ impl<T: Component> QueryObserverAccess for Has<T> {
     }
 }
 
-struct DefaultFilterBanisher;
+/// A filter that allows all disabling components.
+struct AllowAll;
 
 // # Safety
 //
 // This is a trivial implementation
-unsafe impl QueryFilter for DefaultFilterBanisher {
+unsafe impl QueryFilter for AllowAll {
     const IS_ARCHETYPAL: bool = true;
 
     unsafe fn filter_fetch(
@@ -639,7 +640,7 @@ unsafe impl QueryFilter for DefaultFilterBanisher {
 /// `update_component_access` does not add any accesses.
 /// This is sound because [`QueryFilter::filter_fetch`] does not access any components.
 /// This is sound because it doesn't affect the query
-unsafe impl WorldQuery for DefaultFilterBanisher {
+unsafe impl WorldQuery for AllowAll {
     type Fetch<'w> = ();
     type State = Vec<ComponentId>;
 
@@ -681,7 +682,7 @@ unsafe impl WorldQuery for DefaultFilterBanisher {
     }
 }
 
-impl QueryObserverAccess for DefaultFilterBanisher {
+impl QueryObserverAccess for AllowAll {
     fn report_access(world: &mut World, kind: QueryObserverKind, access: &mut Access) {
         for id in world.resource::<DefaultQueryFilters>().disabling_ids() {
             if !access.contains(id) {
