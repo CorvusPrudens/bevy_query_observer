@@ -7,7 +7,8 @@
 use alloc::vec::Vec;
 use bevy_ecs::{
     archetype::Archetype,
-    component::{ComponentId, Tick},
+    change_detection::Tick,
+    component::ComponentId,
     entity_disabling::DefaultQueryFilters,
     error::ErrorContext,
     event::{EntityComponentsTrigger, EventKey},
@@ -125,7 +126,7 @@ fn query_observer_runner(
         world,
         target_entity.archetype(),
         query_state.kind,
-        &trigger.components,
+        trigger.components,
     );
 
     if should_run {
