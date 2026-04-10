@@ -32,8 +32,8 @@
 //!
 //! ```toml
 //! [dependencies]
-//! bevy = "0.17.3"
-//! bevy_query_observer = "0.2.0"
+//! bevy = "0.18.0"
+//! bevy_query_observer = "0.3.0"
 //! ```
 //!
 //! Query observers are added like normal observers.

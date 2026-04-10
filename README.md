@@ -30,8 +30,8 @@ all you need to get started is to add the dependency.
 
 ```toml
 [dependencies]
-bevy = "0.17.3"
-bevy_query_observer = "0.2.0"
+bevy = "0.18.0"
+bevy_query_observer = "0.3.0"
 ```
 
 Query observers are added like normal observers.
@@ -136,6 +136,7 @@ yet expressive enough, the crate comes with a few limitations.
 
 | `bevy` | `bevy_query_observer` |
 | ------ | --------------- |
+| 0.18   | 0.3             |
 | 0.17   | 0.1, 0.2        |
 
 #### License

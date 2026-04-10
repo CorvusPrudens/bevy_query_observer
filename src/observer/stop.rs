@@ -307,7 +307,7 @@ where
         self.system.apply_deferred(world)
     }
 
-    fn check_change_tick(&mut self, check: bevy_ecs::component::CheckChangeTicks) {
+    fn check_change_tick(&mut self, check: bevy_ecs::change_detection::CheckChangeTicks) {
         self.system.check_change_tick(check);
     }
 
@@ -319,7 +319,7 @@ where
         self.system.flags()
     }
 
-    fn get_last_run(&self) -> bevy_ecs::component::Tick {
+    fn get_last_run(&self) -> bevy_ecs::change_detection::Tick {
         self.system.get_last_run()
     }
 
@@ -390,7 +390,7 @@ where
         Ok(())
     }
 
-    fn set_last_run(&mut self, last_run: bevy_ecs::component::Tick) {
+    fn set_last_run(&mut self, last_run: bevy_ecs::change_detection::Tick) {
         self.system.set_last_run(last_run);
     }
 
